@@ -1,0 +1,8 @@
+build/
+deploy/
+*.user
+*.log
+*.exe
+*.zip
+.claude/
+Archive-Do-Not-Reference/
