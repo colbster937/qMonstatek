@@ -19,6 +19,7 @@ add_library(qmonstatek_backend STATIC
     updater/esp32_updater.cpp
     updater/self_updater.cpp
     updater/dfu_flasher.cpp
+    updater/swd_recovery.cpp
 
     # File manager
     filemanager/remote_filesystem.cpp

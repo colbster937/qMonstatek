@@ -19,6 +19,7 @@ Rectangle {
         { name: "firmwareUpdate", label: "Firmware Update",  icon: "⬆" },
         { name: "esp32Update",    label: "ESP32 Update",     icon: "📡" },
         { name: "dfuFlash",      label: "DFU Flash",        icon: "⚡" },
+        { name: "swdRecovery",  label: "SWD Recovery",     icon: "🔧" },
         { name: "dualBoot",      label: "Dual Boot",        icon: "🔄" },
         { name: "debugTerminal", label: "Debug Terminal",    icon: ">" },
         { name: "settings",      label: "Settings",         icon: "⚙" },

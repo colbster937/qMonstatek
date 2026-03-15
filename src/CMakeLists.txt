@@ -27,6 +27,7 @@ qt_add_qml_module(qmonstatek
         qml/views/SettingsView.qml
         qml/views/AboutView.qml
         qml/views/DfuFlashView.qml
+        qml/views/SwdRecoveryView.qml
 )
 
 # App resources (icons, images)

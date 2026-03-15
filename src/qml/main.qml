@@ -62,6 +62,7 @@ ApplicationWindow {
             PowerView          { id: powerView }
             AboutView          { id: aboutView }
             DfuFlashView       { id: dfuFlashView }
+            SwdRecoveryView    { id: swdRecoveryView }
         }
     }
 
@@ -84,6 +85,7 @@ ApplicationWindow {
             case "power":           return 8
             case "about":           return 9
             case "dfuFlash":        return 10
+            case "swdRecovery":     return 11
             default:                return 0
         }
     }
@@ -119,7 +121,7 @@ ApplicationWindow {
         var names = ["deviceInfo", "screenMirror", "fileManager",
                      "firmwareUpdate", "esp32Update", "dualBoot",
                      "debugTerminal", "settings", "power", "about",
-                     "dfuFlash"]
+                     "dfuFlash", "swdRecovery"]
         refreshView(names[contentStack.currentIndex] || "")
     }
 

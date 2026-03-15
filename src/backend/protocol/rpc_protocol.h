@@ -71,6 +71,7 @@ constexpr uint8_t CMD_FW_UPDATE_DATA   = 0x43;
 constexpr uint8_t CMD_FW_UPDATE_FINISH = 0x44;
 constexpr uint8_t CMD_FW_BANK_SWAP     = 0x45;
 constexpr uint8_t CMD_FW_DFU_ENTER     = 0x46;
+constexpr uint8_t CMD_FW_BANK_ERASE    = 0x47;
 
 /* ──────────── ESP32 Commands (0x50–0x5F) ──────────── */
 constexpr uint8_t CMD_ESP_INFO         = 0x50;

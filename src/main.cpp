@@ -17,6 +17,7 @@
 #include "device/log_model.h"
 #include "updater/github_checker.h"
 #include "updater/dfu_flasher.h"
+#include "updater/swd_recovery.h"
 
 static FILE *s_logFile = nullptr;
 
@@ -50,7 +51,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("qMonstatek");
     app.setOrganizationName("Monstatek");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion("1.1.0");
 
     // Open log file next to the executable
     QString logPath = QCoreApplication::applicationDirPath() + "/qmonstatek.log";
@@ -69,6 +70,7 @@ int main(int argc, char *argv[])
     M1Device device;
     GithubChecker githubChecker;
     DfuFlasher dfuFlasher;
+    SwdRecovery swdRecovery;
     LogModel logModel;
     setGlobalLogModel(&logModel);
 
@@ -84,6 +86,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("m1device", &device);
     engine.rootContext()->setContextProperty("githubChecker", &githubChecker);
     engine.rootContext()->setContextProperty("dfuFlasher", &dfuFlasher);
+    engine.rootContext()->setContextProperty("swdRecovery", &swdRecovery);
     engine.rootContext()->setContextProperty("deviceDiscovery", device.discovery());
     engine.rootContext()->setContextProperty("appLog", &logModel);
 

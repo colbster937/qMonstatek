@@ -109,6 +109,7 @@ public:
     Q_INVOKABLE void requestFwInfo();
     Q_INVOKABLE void startFwUpdate(const QString &binFilePath);
     Q_INVOKABLE void swapBanks();
+    Q_INVOKABLE void eraseInactiveBank();
     Q_INVOKABLE void enterDfu();
     Q_INVOKABLE void reboot();
     Q_INVOKABLE void shutdown();
@@ -149,6 +150,8 @@ signals:
     void fwUpdateError(const QString &message);
     void bankSwapStarted();       // ACK received — device is about to reboot
     void bankSwapError(const QString &message);  // NACK received — swap refused
+    void bankEraseComplete();
+    void bankEraseError(const QString &message);
 
     /* ESP32 signals */
     void espInfoReceived(const QString &version);
@@ -201,6 +204,7 @@ private:
     uint32_t   m_fileExpectedSize = 0;
     uint8_t    m_pendingFileCmd = 0;   // tracks last file op for ACK routing
     bool       m_bankSwapPending = false;
+    bool       m_bankErasePending = false;
 
     /* File upload state machine */
     enum class FileUploadState {

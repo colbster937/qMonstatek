@@ -425,6 +425,13 @@ void M1Device::swapBanks()
     sendCommand(rpc::CMD_FW_BANK_SWAP);
 }
 
+void M1Device::eraseInactiveBank()
+{
+    m_bankErasePending = true;
+    m_pingTimer.stop();  // Erase takes ~5s; suspend pings so we don't timeout
+    sendCommand(rpc::CMD_FW_BANK_ERASE);
+}
+
 void M1Device::enterDfu()
 {
     sendCommand(rpc::CMD_FW_DFU_ENTER);
@@ -842,6 +849,15 @@ void M1Device::handleAck(const rpc::Frame & /*frame*/)
 {
     qDebug() << "RPC ACK received";
 
+    // Bank erase ACK — inactive bank has been wiped
+    if (m_bankErasePending) {
+        m_bankErasePending = false;
+        m_pingTimer.start(5000);
+        qDebug() << "Bank erase: ACK received, inactive bank wiped";
+        emit bankEraseComplete();
+        return;
+    }
+
     // Bank swap ACK — device accepted swap and is about to reboot
     if (m_bankSwapPending) {
         m_bankSwapPending = false;
@@ -1034,6 +1050,15 @@ void M1Device::handleNack(const rpc::Frame &frame)
     }
 
     qWarning() << "RPC NACK:" << errMsg;
+
+    // Bank erase NACK — erase failed
+    if (m_bankErasePending) {
+        m_bankErasePending = false;
+        m_pingTimer.start(5000);
+        qWarning() << "Bank erase failed:" << errMsg;
+        emit bankEraseError(errMsg);
+        return;
+    }
 
     // Bank swap NACK — swap was refused
     if (m_bankSwapPending) {
