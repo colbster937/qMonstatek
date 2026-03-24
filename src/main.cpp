@@ -63,7 +63,10 @@ int main(int argc, char *argv[])
         fprintf(s_logFile, "qMonstatek: starting... (log file active)\n");
         fflush(s_logFile);
     }
+
+    #ifndef Q_OS_MACOS
     app.setWindowIcon(QIcon(":/icons/app_icon.png"));
+    #endif
 
     QQuickStyle::setStyle("Material");
 
