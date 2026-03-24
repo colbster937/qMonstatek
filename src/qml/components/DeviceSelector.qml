@@ -61,7 +61,9 @@ Dialog {
 
                 TextField {
                     id: manualPort
-                    placeholderText: "COM port (e.g., COM3)"
+                    placeholderText: Qt.platform.os === "windows" ? "COM port (e.g., COM3)"
+                                   : Qt.platform.os === "osx" ? "Port (e.g., /dev/cu.usbmodem)"
+                                   : "Port (e.g., /dev/ttyACM0)"
                     Layout.fillWidth: true
                 }
 

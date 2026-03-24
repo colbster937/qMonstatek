@@ -1,9 +1,9 @@
 /*
- * dfu_flasher.h — DFU flash support via standalone helper exe
+ * dfu_flasher.h — DFU flash support
  *
- * Calls stm32_dfu_flash.exe (which loads CubeProgrammer_API.dll) to
- * detect STM32 DFU devices, handle SWAP_BANK, and flash firmware.
- * The helper runs as a separate process to avoid Qt DLL version conflicts.
+ * On Windows: calls stm32_dfu_flash.exe (which loads CubeProgrammer_API.dll)
+ * to avoid Qt DLL version conflicts with the bundled helper.
+ * On macOS/Linux: calls STM32_Programmer_CLI directly via QProcess.
  */
 
 #ifndef DFU_FLASHER_H
@@ -80,6 +80,7 @@ private:
     QString m_statusMessage;
     QString m_dfuDeviceInfo;
     QString m_helperPath;
+    bool    m_useCliDirect = false;  // true = STM32_Programmer_CLI, false = bundled helper
 };
 
 #endif // DFU_FLASHER_H

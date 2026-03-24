@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=qMonstatek
+Comment=Companion app for Monstatek M1
+Exec=qmonstatek
+Icon=qmonstatek
+Terminal=false
+Categories=Utility;Development;
+MimeType=

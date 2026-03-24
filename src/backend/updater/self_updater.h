@@ -31,7 +31,7 @@ signals:
     void updateError(const QString &message);
 
 private:
-    QString extractSetupExe(const QString &zipPath);
+    QString extractZip(const QString &zipPath);
     void    cleanupOldDownloads();
 };
 

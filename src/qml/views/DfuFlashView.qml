@@ -199,8 +199,9 @@ Item {
                 }
             }
 
-            // ── WinUSB Driver (Zadig) Instructions ──
+            // ── WinUSB Driver (Zadig) Instructions — Windows Only ──
             Pane {
+                visible: Qt.platform.os === "windows"
                 Layout.fillWidth: true
                 Layout.leftMargin: 24
                 Layout.rightMargin: 24
@@ -246,6 +247,45 @@ Item {
                         Layout.fillWidth: true
                         font.pixelSize: 11
                         color: Material.hintTextColor
+                    }
+                }
+            }
+
+            // ── Linux USB Permissions Note ──
+            Pane {
+                visible: Qt.platform.os === "linux"
+                Layout.fillWidth: true
+                Layout.leftMargin: 24
+                Layout.rightMargin: 24
+                Material.elevation: 1
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    Label {
+                        text: "Linux USB Permissions (First Time Only)"
+                        font.bold: true
+                        font.pixelSize: 14
+                    }
+
+                    Label {
+                        text: "If the DFU device is not detected, you may need to add a udev rule " +
+                              "so your user can access STM32 DFU devices without root:"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                        font.pixelSize: 12
+                        color: Material.hintTextColor
+                    }
+
+                    Label {
+                        text: "echo 'SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0483\", ATTRS{idProduct}==\"df11\", MODE=\"0666\"' " +
+                              "| sudo tee /etc/udev/rules.d/99-stm32-dfu.rules\n" +
+                              "sudo udevadm control --reload-rules && sudo udevadm trigger"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                        font.family: "monospace"
+                        font.pixelSize: 11
                     }
                 }
             }

@@ -11,6 +11,7 @@
  */
 
 #include "swd_recovery.h"
+#include "tool_paths.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -36,11 +37,8 @@ SwdRecovery::~SwdRecovery()
 // ── Path resolution ──────────────────────────────────────────────
 
 /*
- * Find the OpenOCD binary AND scripts together, ensuring they come
- * from the same source.  Search order:
- *   1. App-local:  <app>/openocd/bin/openocd.exe  +  <app>/openocd/scripts/
- *   2. STM32CubeIDE (any version under C:/ST/)
- *   3. System PATH  +  ../share/openocd/scripts/
+ * Find the OpenOCD binary AND scripts together using the shared
+ * ToolPaths utility for cross-platform path resolution.
  */
 void SwdRecovery::resolveOpenOcdPaths()
 {
@@ -48,97 +46,16 @@ void SwdRecovery::resolveOpenOcdPaths()
         return;
     m_pathsResolved = true;
 
-    // ── 1. App-local bundle ────────────────────────────────────
-    QString appDir = QCoreApplication::applicationDirPath();
-    QString localBin = QDir(appDir).filePath("openocd/bin/openocd.exe");
-    if (QFile::exists(localBin)) {
-        // Check for scripts next to the binary
-        QDir localOcd(appDir + "/openocd");
-        QString localScripts = localOcd.filePath("scripts");
-        if (QDir(localScripts).exists()) {
-            m_ocdPath = localBin;
-            m_scriptsPath = localScripts;
+    m_ocdPath = ToolPaths::findOpenOcd();
+    if (!m_ocdPath.isEmpty()) {
+        m_scriptsPath = ToolPaths::findOpenOcdScripts(m_ocdPath);
+        if (!m_scriptsPath.isEmpty()) {
             probeVersion();
             return;
         }
-    }
-
-    // ── 2. STM32CubeIDE installations ──────────────────────────
-    // Both the binary plugin and debug/scripts plugin must come from
-    // the SAME IDE installation to avoid version mismatches.
-    QDir stDir("C:/ST");
-    if (stDir.exists()) {
-        // Try newest IDE first (reverse alphabetical = highest version)
-        QStringList ideEntries = stDir.entryList(
-            QStringList() << "STM32CubeIDE*", QDir::Dirs, QDir::Name | QDir::Reversed);
-
-        for (const QString &ideEntry : ideEntries) {
-            QString idePath = stDir.filePath(ideEntry) + "/STM32CubeIDE";
-            QDir pluginsDir(idePath + "/plugins");
-            if (!pluginsDir.exists())
-                continue;
-
-            // Find the OpenOCD binary in this IDE installation
-            QString ocdBin;
-            QStringList ocdPlugins = pluginsDir.entryList(
-                QStringList() << "com.st.stm32cube.ide.mcu.externaltools.openocd*",
-                QDir::Dirs);
-            for (const QString &plugin : ocdPlugins) {
-                QString candidate = pluginsDir.filePath(plugin) + "/tools/bin/openocd.exe";
-                if (QFile::exists(candidate)) {
-                    ocdBin = candidate;
-                    break;
-                }
-            }
-            if (ocdBin.isEmpty())
-                continue;
-
-            // Find the scripts in this SAME IDE installation
-            // Layout A (older): externaltools plugin has resources/openocd/st_scripts/
-            QDir toolsDir = QFileInfo(ocdBin).absoluteDir();  // .../bin/
-            toolsDir.cdUp();  // .../tools/
-            QString scriptsA = toolsDir.filePath("resources/openocd/st_scripts");
-            if (QDir(scriptsA).exists()) {
-                m_ocdPath = ocdBin;
-                m_scriptsPath = scriptsA;
-                probeVersion();
-                return;
-            }
-
-            // Layout B (2.1+): separate debug.openocd plugin has the scripts
-            QStringList debugPlugins = pluginsDir.entryList(
-                QStringList() << "com.st.stm32cube.ide.mcu.debug.openocd*",
-                QDir::Dirs);
-            for (const QString &dp : debugPlugins) {
-                QString scriptsB = pluginsDir.filePath(dp) +
-                                   "/resources/openocd/st_scripts";
-                if (QDir(scriptsB).exists()) {
-                    m_ocdPath = ocdBin;
-                    m_scriptsPath = scriptsB;
-                    probeVersion();
-                    return;
-                }
-            }
-
-            // Binary found but no scripts in this IDE — skip, try older IDE
-            qWarning() << "SWD: Found OpenOCD binary in" << ideEntry
-                       << "but no scripts. Trying next installation.";
-        }
-    }
-
-    // ── 3. System PATH ─────────────────────────────────────────
-    QString pathOcd = QStandardPaths::findExecutable("openocd");
-    if (!pathOcd.isEmpty()) {
-        QDir binDir = QFileInfo(pathOcd).absoluteDir();
-        QDir parentDir(binDir);
-        parentDir.cdUp();
-        QString shareScripts = parentDir.filePath("share/openocd/scripts");
-        if (QDir(shareScripts).exists()) {
-            m_ocdPath = pathOcd;
-            m_scriptsPath = shareScripts;
-            probeVersion();
-            return;
-        }
+        // Binary found but no scripts — clear it
+        qWarning() << "SWD: Found OpenOCD at" << m_ocdPath << "but no scripts.";
+        m_ocdPath.clear();
     }
 
     qWarning() << "SWD: Could not find OpenOCD binary + scripts pair.";
@@ -170,10 +87,8 @@ void SwdRecovery::probeVersion()
 }
 
 /*
- * Find STM32_Programmer_CLI.exe for ST-Link operations.
- * Search order:
- *   1. STM32CubeProgrammer standalone install
- *   2. STM32CubeIDE embedded cubeprogrammer plugin
+ * Find STM32_Programmer_CLI using the shared ToolPaths utility
+ * for cross-platform path resolution.
  */
 void SwdRecovery::resolveCubeProgrammerPath()
 {
@@ -181,40 +96,11 @@ void SwdRecovery::resolveCubeProgrammerPath()
         return;
     m_cubeProgResolved = true;
 
-    // 1. Standalone STM32CubeProgrammer
-    QString progPath = "C:/Program Files/STMicroelectronics/STM32Cube/"
-                       "STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe";
-    if (QFile::exists(progPath)) {
-        m_cubeProgrammerPath = progPath;
+    m_cubeProgrammerPath = ToolPaths::findCubeProgrammerCli();
+    if (!m_cubeProgrammerPath.isEmpty())
         qInfo() << "SWD: CubeProgrammer =" << m_cubeProgrammerPath;
-        return;
-    }
-
-    // 2. Embedded in STM32CubeIDE
-    QDir stDir("C:/ST");
-    if (stDir.exists()) {
-        QStringList ideEntries = stDir.entryList(
-            QStringList() << "STM32CubeIDE*", QDir::Dirs, QDir::Name | QDir::Reversed);
-        for (const QString &ideEntry : ideEntries) {
-            QDir pluginsDir(stDir.filePath(ideEntry) + "/STM32CubeIDE/plugins");
-            if (!pluginsDir.exists())
-                continue;
-            QStringList cubeProgs = pluginsDir.entryList(
-                QStringList() << "com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer*",
-                QDir::Dirs);
-            for (const QString &cp : cubeProgs) {
-                QString candidate = pluginsDir.filePath(cp) +
-                                    "/tools/bin/STM32_Programmer_CLI.exe";
-                if (QFile::exists(candidate)) {
-                    m_cubeProgrammerPath = candidate;
-                    qInfo() << "SWD: CubeProgrammer =" << m_cubeProgrammerPath;
-                    return;
-                }
-            }
-        }
-    }
-
-    qWarning() << "SWD: STM32_Programmer_CLI not found.";
+    else
+        qWarning() << "SWD: STM32_Programmer_CLI not found.";
 }
 
 QString SwdRecovery::interfaceConfig() const
@@ -242,8 +128,14 @@ bool SwdRecovery::validateSetup(QString &error) const
 
     // Pico CMSIS-DAP uses OpenOCD
     if (m_ocdPath.isEmpty() || m_scriptsPath.isEmpty()) {
+#ifdef _WIN32
         error = "OpenOCD not found. Install STM32CubeIDE or place OpenOCD "
                 "in the openocd/ folder next to qmonstatek.exe.";
+#elif defined(__APPLE__)
+        error = "OpenOCD not found. Install STM32CubeIDE or run: brew install openocd";
+#else
+        error = "OpenOCD not found. Install STM32CubeIDE or run: sudo apt install openocd";
+#endif
         return false;
     }
 
@@ -536,8 +428,13 @@ void SwdRecovery::runOpenOcd(const QString &commands, const QString &opName)
         QString msg;
         switch (err) {
         case QProcess::FailedToStart:
+#ifdef _WIN32
             msg = "OpenOCD failed to start. Check that the executable exists and "
                   "required DLLs (libusb-1.0.dll) are present.";
+#else
+            msg = "OpenOCD failed to start. Check that the executable exists and "
+                  "libusb is installed (brew install libusb / apt install libusb-1.0-0).";
+#endif
             break;
         case QProcess::Timedout:
             msg = "OpenOCD timed out.";

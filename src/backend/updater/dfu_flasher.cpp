@@ -1,11 +1,13 @@
 /*
- * dfu_flasher.cpp — DFU flash support via standalone helper exe
+ * dfu_flasher.cpp — DFU flash support
  *
- * Calls stm32prog/stm32_dfu_flash.exe via QProcess and parses its
- * structured stdout output (DEVICE, SWAP_BANK, STATUS, PROGRESS, OK, ERROR).
+ * On Windows: calls stm32prog/stm32_dfu_flash.exe via QProcess and parses
+ * its structured stdout output (DEVICE, SWAP_BANK, STATUS, PROGRESS, OK, ERROR).
+ * On macOS/Linux: calls STM32_Programmer_CLI directly and parses its output.
  */
 
 #include "dfu_flasher.h"
+#include "tool_paths.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -36,12 +38,24 @@ DfuFlasher::~DfuFlasher()
 
 QString DfuFlasher::resolveHelperPath()
 {
+#ifdef _WIN32
+    // Windows: prefer the bundled helper (avoids Qt DLL conflicts)
     QString appDir = QCoreApplication::applicationDirPath();
     QString path = QDir(appDir).filePath("stm32prog/stm32_dfu_flash.exe");
-    if (QFile::exists(path))
+    if (QFile::exists(path)) {
+        m_useCliDirect = false;
         return path;
+    }
+#endif
 
-    return QString();
+    // All platforms: fall back to STM32_Programmer_CLI
+    QString cli = ToolPaths::findCubeProgrammerCli();
+    if (!cli.isEmpty()) {
+        m_useCliDirect = true;
+        return cli;
+    }
+
+    return {};
 }
 
 bool DfuFlasher::isToolAvailable()
@@ -82,8 +96,12 @@ void DfuFlasher::stopScanning()
 void DfuFlasher::scanOnce()
 {
     if (!isToolAvailable()) {
+#ifdef _WIN32
         setStatus("DFU flash tool not found. Check that stm32prog/ folder "
-                  "exists next to qmonstatek.exe.");
+                  "exists next to qmonstatek.exe, or install STM32CubeProgrammer.");
+#else
+        setStatus("STM32CubeProgrammer not found. Install it from st.com.");
+#endif
         setDfuDeviceFound(false);
         return;
     }
@@ -96,23 +114,50 @@ void DfuFlasher::scanOnce()
     connect(m_scanProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &DfuFlasher::onScanFinished);
 
-    m_scanProcess->start(m_helperPath, QStringList() << "scan");
+    if (m_useCliDirect) {
+        m_scanProcess->start(m_helperPath,
+                             QStringList() << "-c" << "port=USB1" << "--list");
+    } else {
+        m_scanProcess->start(m_helperPath, QStringList() << "scan");
+    }
 }
 
 void DfuFlasher::onScanFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    Q_UNUSED(exitCode);
     Q_UNUSED(exitStatus);
 
     if (!m_scanProcess)
         return;
 
     QString output = QString::fromUtf8(m_scanProcess->readAllStandardOutput());
+    QString errOutput = QString::fromUtf8(m_scanProcess->readAllStandardError());
     m_scanProcess->deleteLater();
     m_scanProcess = nullptr;
 
-    // Parse DEVICE line
-    // Format: DEVICE:<usb_index>|<serial>|<product>  or  DEVICE:none
+    if (m_useCliDirect) {
+        // Parse STM32_Programmer_CLI output
+        QString allOutput = output + errOutput;
+        if (exitCode == 0 && (allOutput.contains("Device Index") ||
+                              allOutput.contains("STM32H5"))) {
+            // Extract device info from output
+            QString display = "STM32 DFU device detected";
+            QRegularExpression snRe("Serial number\\s*:\\s*(\\S+)",
+                                    QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch snMatch = snRe.match(allOutput);
+            if (snMatch.hasMatch())
+                display = "STM32 DFU — SN: " + snMatch.captured(1);
+
+            setDfuDeviceFound(true, display);
+            setStatus("STM32 DFU device detected.");
+        } else {
+            setDfuDeviceFound(false);
+            if (!m_flashing)
+                setStatus("No DFU device found. Follow the steps above to enter DFU mode.");
+        }
+        return;
+    }
+
+    // Parse bundled helper output (Windows helper protocol)
     for (const QString &line : output.split('\n', Qt::SkipEmptyParts)) {
         QString trimmed = line.trimmed();
 
@@ -124,7 +169,7 @@ void DfuFlasher::onScanFinished(int exitCode, QProcess::ExitStatus exitStatus)
         }
 
         if (trimmed.startsWith("DEVICE:")) {
-            QString info = trimmed.mid(7);  // after "DEVICE:"
+            QString info = trimmed.mid(7);
             QStringList parts = info.split('|');
             QString display = "STM32 DFU device detected";
             if (parts.size() >= 2)
@@ -143,7 +188,6 @@ void DfuFlasher::onScanFinished(int exitCode, QProcess::ExitStatus exitStatus)
         }
     }
 
-    // No DEVICE line found
     setDfuDeviceFound(false);
     if (!m_flashing)
         setStatus("No DFU device found.");
@@ -159,8 +203,12 @@ void DfuFlasher::startFlash(const QString &binFilePath, const QString &target)
     }
 
     if (!isToolAvailable()) {
+#ifdef _WIN32
         emit flashError("DFU flash tool not found. Check that stm32prog/ folder "
-                        "exists next to qmonstatek.exe.");
+                        "exists next to qmonstatek.exe, or install STM32CubeProgrammer.");
+#else
+        emit flashError("STM32CubeProgrammer not found. Install it from st.com.");
+#endif
         return;
     }
 
@@ -208,7 +256,20 @@ void DfuFlasher::startFlash(const QString &binFilePath, const QString &target)
             this, &DfuFlasher::onFlashFinished);
 
     QStringList args;
-    args << "flash" << QDir::toNativeSeparators(binFilePath) << target;
+    if (m_useCliDirect) {
+        // STM32_Programmer_CLI: determine flash address from target
+        QString addr = "0x08100000";  // default: bank 2 (inactive)
+        if (target == "bank1")
+            addr = "0x08000000";
+        else if (target == "bank2")
+            addr = "0x08100000";
+
+        args << "-c" << "port=USB1"
+             << "-d" << QDir::toNativeSeparators(binFilePath) << addr
+             << "-v" << "-rst";
+    } else {
+        args << "flash" << QDir::toNativeSeparators(binFilePath) << target;
+    }
 
     qInfo() << "DFU flash command:" << m_helperPath << args;
     m_flashProcess->start(m_helperPath, args);
@@ -227,25 +288,49 @@ void DfuFlasher::onFlashOutput()
         if (line.isEmpty())
             continue;
 
-        if (line.startsWith("PROGRESS:")) {
-            int pct = line.mid(9).toInt();
-            if (pct != m_progress) {
-                m_progress = pct;
-                emit progressChanged(m_progress);
+        if (m_useCliDirect) {
+            // Parse STM32_Programmer_CLI output
+            // Progress lines: "Download in Progress:  [==        ] 20%"
+            QRegularExpression pctRe("(\\d+)%");
+            QRegularExpressionMatch pctMatch = pctRe.match(line);
+            if (pctMatch.hasMatch()) {
+                int pct = pctMatch.captured(1).toInt();
+                if (pct != m_progress) {
+                    m_progress = pct;
+                    emit progressChanged(m_progress);
+                }
             }
-        } else if (line.startsWith("STATUS:")) {
-            setStatus(line.mid(7));
-        } else if (line.startsWith("SWAP_BANK:")) {
-            int val = line.mid(10).toInt();
-            if (val == 1)
-                setStatus("SWAP_BANK is active — clearing for safe flash...");
-        } else if (line == "OK") {
-            m_flashOk = true;
-        } else if (line.startsWith("LOG:")) {
-            qDebug() << "CubeProg:" << line.mid(4);
-        } else if (line.startsWith("ERROR:")) {
-            // Will be handled in onFlashFinished
-            qWarning() << "DFU helper:" << line;
+            if (line.contains("File download complete"))
+                m_flashOk = true;
+            else if (line.contains("Download in Progress"))
+                setStatus("Writing firmware...");
+            else if (line.contains("Verifying"))
+                setStatus("Verifying...");
+            else if (line.contains("Start operation achieved"))
+                setStatus("Connecting to device...");
+            else if (line.contains("Error") || line.contains("ERROR"))
+                qWarning() << "CubeProg:" << line;
+        } else {
+            // Parse bundled helper protocol
+            if (line.startsWith("PROGRESS:")) {
+                int pct = line.mid(9).toInt();
+                if (pct != m_progress) {
+                    m_progress = pct;
+                    emit progressChanged(m_progress);
+                }
+            } else if (line.startsWith("STATUS:")) {
+                setStatus(line.mid(7));
+            } else if (line.startsWith("SWAP_BANK:")) {
+                int val = line.mid(10).toInt();
+                if (val == 1)
+                    setStatus("SWAP_BANK is active — clearing for safe flash...");
+            } else if (line == "OK") {
+                m_flashOk = true;
+            } else if (line.startsWith("LOG:")) {
+                qDebug() << "CubeProg:" << line.mid(4);
+            } else if (line.startsWith("ERROR:")) {
+                qWarning() << "DFU helper:" << line;
+            }
         }
     }
 }
@@ -264,23 +349,29 @@ void DfuFlasher::onFlashFinished(int exitCode, QProcess::ExitStatus exitStatus)
     emit flashingChanged(false);
 
     if (exitStatus == QProcess::CrashExit) {
-        setStatus("DFU flash helper crashed.");
+        setStatus("DFU flash process crashed.");
         emit flashError("The DFU flash process crashed. Check USB connection and try again.");
         startScanning();
         return;
     }
 
-    // Check for OK or ERROR in remaining output (may already be caught by onFlashOutput)
-    QString allOutput = remaining;
     bool success = m_flashOk;
     QString errorMsg;
 
-    for (const QString &part : allOutput.split('\n', Qt::SkipEmptyParts)) {
-        QString line = part.trimmed();
-        if (line == "OK")
+    if (m_useCliDirect) {
+        // CLI: success if exit code 0 and "File download complete" was seen
+        if (exitCode == 0 && (success || remaining.contains("File download complete")))
             success = true;
-        else if (line.startsWith("ERROR:"))
-            errorMsg = line.mid(6);
+        if (!success && remaining.contains("Error"))
+            errorMsg = "CubeProgrammer reported an error. Check the device and try again.";
+    } else {
+        for (const QString &part : remaining.split('\n', Qt::SkipEmptyParts)) {
+            QString line = part.trimmed();
+            if (line == "OK")
+                success = true;
+            else if (line.startsWith("ERROR:"))
+                errorMsg = line.mid(6);
+        }
     }
 
     if (exitCode == 0 && success) {
@@ -328,8 +419,15 @@ void DfuFlasher::swapBank()
 
     setStatus("Swapping flash banks...");
 
-    qInfo() << "Swap bank command:" << m_helperPath << "swapbank";
-    m_swapProcess->start(m_helperPath, QStringList() << "swapbank");
+    QStringList args;
+    if (m_useCliDirect) {
+        args << "-c" << "port=USB1" << "-ob" << "SWAP_BANK=1";
+    } else {
+        args << "swapbank";
+    }
+
+    qInfo() << "Swap bank command:" << m_helperPath << args;
+    m_swapProcess->start(m_helperPath, args);
 }
 
 void DfuFlasher::onSwapBankFinished(int exitCode, QProcess::ExitStatus exitStatus)
@@ -352,14 +450,25 @@ void DfuFlasher::onSwapBankFinished(int exitCode, QProcess::ExitStatus exitStatu
     QString errorMsg;
     QString statusMsg;
 
-    for (const QString &part : output.split('\n', Qt::SkipEmptyParts)) {
-        QString line = part.trimmed();
-        if (line == "OK")
+    if (m_useCliDirect) {
+        // CLI: success if exit code 0 and option bytes programmed
+        if (exitCode == 0 && (output.contains("Option bytes successfully") ||
+                              output.contains("SWAP_BANK"))) {
             success = true;
-        else if (line.startsWith("ERROR:"))
-            errorMsg = line.mid(6);
-        else if (line.startsWith("STATUS:"))
-            statusMsg = line.mid(7);
+            statusMsg = "Bank swap complete! Device will reboot.";
+        } else if (output.contains("Error")) {
+            errorMsg = "CubeProgrammer reported an error during bank swap.";
+        }
+    } else {
+        for (const QString &part : output.split('\n', Qt::SkipEmptyParts)) {
+            QString line = part.trimmed();
+            if (line == "OK")
+                success = true;
+            else if (line.startsWith("ERROR:"))
+                errorMsg = line.mid(6);
+            else if (line.startsWith("STATUS:"))
+                statusMsg = line.mid(7);
+        }
     }
 
     if (exitCode == 0 && success) {

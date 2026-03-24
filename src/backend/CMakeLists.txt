@@ -18,6 +18,7 @@ add_library(qmonstatek_backend STATIC
     updater/firmware_updater.cpp
     updater/esp32_updater.cpp
     updater/self_updater.cpp
+    updater/tool_paths.cpp
     updater/dfu_flasher.cpp
     updater/swd_recovery.cpp
 

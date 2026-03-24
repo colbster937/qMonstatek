@@ -299,7 +299,9 @@ Item {
                                   ? swdRecovery.openOcdLocation()
                                   : isStLink
                                     ? "Install STM32CubeProgrammer from st.com"
-                                    : "Install STM32CubeIDE or place OpenOCD in openocd/ next to qmonstatek.exe"
+                                    : Qt.platform.os === "windows"
+                                      ? "Install STM32CubeIDE or place OpenOCD in openocd/ next to qmonstatek.exe"
+                                      : "Install STM32CubeIDE or OpenOCD (brew install openocd / apt install openocd)"
                             font.pixelSize: 11
                             color: Material.hintTextColor
                             Layout.fillWidth: true
@@ -691,7 +693,8 @@ Item {
                             text: swdRecovery.outputLog
                             readOnly: true
                             wrapMode: Text.Wrap
-                            font.family: "Consolas"
+                            font.family: Qt.platform.os === "windows" ? "Consolas"
+                                       : Qt.platform.os === "osx" ? "Menlo" : "monospace"
                             font.pixelSize: 11
                             color: "#CCCCCC"
                             selectByMouse: true

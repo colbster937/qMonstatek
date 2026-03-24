@@ -5,10 +5,12 @@
 #include "self_updater.h"
 
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QProcess>
+#include <QUrl>
 #include <QDebug>
 
 SelfUpdater::SelfUpdater(QObject *parent)
@@ -26,9 +28,11 @@ void SelfUpdater::cleanupOldDownloads()
 {
     QDir tmp(QDir::tempPath());
 
-    // Delete any qMonstatek_*_setup.zip and qMonstatek_*_setup.exe
+    // Clean up downloaded installers for all platforms (zipped and raw)
     QStringList filters;
-    filters << "qMonstatek_*_setup.zip" << "qMonstatek_*_setup.exe";
+    filters << "qMonstatek_*_setup.zip" << "qMonstatek_*_setup.exe"
+            << "qMonstatek_*_macos.zip" << "qMonstatek_*.dmg"
+            << "qMonstatek_*_linux.zip" << "qMonstatek_*.AppImage";
     QStringList files = tmp.entryList(filters, QDir::Files);
     for (const QString &f : files) {
         QString path = tmp.absoluteFilePath(f);
@@ -44,23 +48,32 @@ void SelfUpdater::cleanupOldDownloads()
     }
 }
 
-QString SelfUpdater::extractSetupExe(const QString &zipPath)
+/*
+ * Extract a .zip file to the qmonstatek_update temp folder.
+ * Uses PowerShell on Windows, unzip on macOS/Linux.
+ * Returns the path to the extraction directory, or empty on failure.
+ */
+QString SelfUpdater::extractZip(const QString &zipPath)
 {
-    // Extract to a temp folder next to the zip
     QString extractDir = QFileInfo(zipPath).absolutePath() + "/qmonstatek_update";
     QDir().mkpath(extractDir);
 
-    // Use PowerShell to extract (available on all Windows 10+)
     QProcess ps;
     ps.setProcessChannelMode(QProcess::MergedChannels);
+
+#ifdef _WIN32
     QStringList args;
     args << "-NoProfile" << "-Command"
          << QString("Expand-Archive -Path '%1' -DestinationPath '%2' -Force")
                 .arg(zipPath, extractDir);
     ps.start("powershell.exe", args);
+#else
+    // macOS and Linux: unzip is available by default
+    ps.start("unzip", QStringList() << "-o" << zipPath << "-d" << extractDir);
+#endif
 
     if (!ps.waitForFinished(30000)) {
-        qWarning() << "SelfUpdater: PowerShell extract timed out";
+        qWarning() << "SelfUpdater: zip extraction timed out";
         return {};
     }
 
@@ -69,15 +82,7 @@ QString SelfUpdater::extractSetupExe(const QString &zipPath)
         return {};
     }
 
-    // Find the _setup.exe inside
-    QDir dir(extractDir);
-    QStringList exes = dir.entryList(QStringList() << "*_setup.exe", QDir::Files);
-    if (exes.isEmpty()) {
-        qWarning() << "SelfUpdater: no _setup.exe found in zip";
-        return {};
-    }
-
-    return dir.absoluteFilePath(exes.first());
+    return extractDir;
 }
 
 bool SelfUpdater::launchInstallerAndQuit(const QString &path)
@@ -88,25 +93,64 @@ bool SelfUpdater::launchInstallerAndQuit(const QString &path)
         return false;
     }
 
-    QString exePath = path;
-
-    // If it's a zip, extract the setup exe first
+    // If it's a zip, extract first
+    QString targetPath = path;
+    QString extractDir;
     if (fi.suffix().toLower() == "zip") {
-        exePath = extractSetupExe(path);
-        if (exePath.isEmpty()) {
-            emit updateError("Failed to extract installer from zip.");
+        extractDir = extractZip(path);
+        if (extractDir.isEmpty()) {
+            emit updateError("Failed to extract update from zip.");
             return false;
         }
     }
 
-    qInfo() << "SelfUpdater: launching installer" << exePath;
+#ifdef _WIN32
+    // Windows: find and launch the _setup.exe
+    if (!extractDir.isEmpty()) {
+        QDir dir(extractDir);
+        QStringList exes = dir.entryList(QStringList() << "*_setup.exe", QDir::Files);
+        if (exes.isEmpty()) {
+            emit updateError("No installer found in zip.");
+            return false;
+        }
+        targetPath = dir.absoluteFilePath(exes.first());
+    }
 
-    bool ok = QProcess::startDetached(exePath, {});
+    qInfo() << "SelfUpdater: launching installer" << targetPath;
+    bool ok = QProcess::startDetached(targetPath, {});
     if (!ok) {
-        emit updateError("Failed to launch installer. Try running it manually from: "
-                         + exePath);
+        emit updateError("Failed to launch installer.");
         return false;
     }
+
+#elif defined(__APPLE__)
+    // macOS: find .dmg in extracted zip (or use the path directly if not zipped)
+    if (!extractDir.isEmpty()) {
+        QDir dir(extractDir);
+        QStringList dmgs = dir.entryList(QStringList() << "*.dmg", QDir::Files);
+        if (!dmgs.isEmpty())
+            targetPath = dir.absoluteFilePath(dmgs.first());
+    }
+
+    qInfo() << "SelfUpdater: opening" << targetPath;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(targetPath));
+
+#else
+    // Linux: find .AppImage in extracted zip, make executable, open containing folder
+    if (!extractDir.isEmpty()) {
+        QDir dir(extractDir);
+        QStringList appImages = dir.entryList(QStringList() << "*.AppImage", QDir::Files);
+        if (!appImages.isEmpty()) {
+            targetPath = dir.absoluteFilePath(appImages.first());
+            // Preserve executable bit
+            QFile::setPermissions(targetPath,
+                QFile::permissions(targetPath) | QFileDevice::ExeUser | QFileDevice::ExeGroup);
+        }
+    }
+
+    qInfo() << "SelfUpdater: opening download location for" << targetPath;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(targetPath).absolutePath()));
+#endif
 
     QCoreApplication::quit();
     return true;

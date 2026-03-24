@@ -1,9 +1,13 @@
 add_subdirectory(backend)
 
 # Main executable
-qt_add_executable(qmonstatek WIN32
-    main.cpp
-)
+if(WIN32)
+    qt_add_executable(qmonstatek WIN32 main.cpp)
+elseif(APPLE)
+    qt_add_executable(qmonstatek MACOSX_BUNDLE main.cpp)
+else()
+    qt_add_executable(qmonstatek main.cpp)
+endif()
 
 # QML module
 qt_add_qml_module(qmonstatek
@@ -48,9 +52,22 @@ target_link_libraries(qmonstatek PRIVATE
     Qt6::Widgets
 )
 
-# Windows application icon
+# Platform-specific resources
 if(WIN32)
     target_sources(qmonstatek PRIVATE resources/app.rc)
+elseif(APPLE)
+    set(MACOSX_BUNDLE_ICON_FILE qmonstatek.icns)
+    set(ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/qmonstatek.icns")
+    if(EXISTS "${ICON_FILE}")
+        set_source_files_properties("${ICON_FILE}" PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources")
+        target_sources(qmonstatek PRIVATE "${ICON_FILE}")
+    endif()
+    set_target_properties(qmonstatek PROPERTIES
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.monstatek.qmonstatek"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_NAME "qMonstatek")
 endif()
 
 # Install rules

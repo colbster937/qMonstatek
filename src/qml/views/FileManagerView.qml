@@ -124,7 +124,7 @@ Item {
                 view.statusText = "SD card mounted"
                 refresh()
             } else {
-                view.statusText = "SD card unmounted — accessible from Windows"
+                view.statusText = "SD card unmounted — accessible from your computer"
                 view.fileEntries = []
                 clearSelection()
             }
@@ -257,7 +257,7 @@ Item {
             RowLayout {
                 anchors.fill: parent
                 Label {
-                    text: "SD card is unmounted — accessible from Windows. Click Mount SD when done."
+                    text: "SD card is unmounted — accessible from your computer. Click Mount SD when done."
                     font.pixelSize: 12
                     color: "#E65100"
                     wrapMode: Text.Wrap

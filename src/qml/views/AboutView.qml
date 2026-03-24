@@ -104,18 +104,29 @@ Item {
             property int downloadPct: 0
             property string downloadedPath: ""
 
-            // Find the _setup.zip asset from release assets (fall back to _setup.exe)
+            // Find the platform-appropriate installer asset from release assets
+            // Prefer .zip on all platforms (avoids MOTW on Windows, Gatekeeper
+            // quarantine on macOS, and preserves executable bit on Linux)
             function findInstallerAsset(assets) {
+                var os = Qt.platform.os
                 var zipAsset = null
-                var exeAsset = null
+                var rawAsset = null
                 for (var i = 0; i < assets.length; i++) {
                     var name = assets[i].name
-                    if (name.indexOf("_setup") >= 0) {
-                        if (name.indexOf(".zip") >= 0) zipAsset = assets[i]
-                        else if (name.indexOf(".exe") >= 0) exeAsset = assets[i]
+                    if (os === "windows") {
+                        if (name.indexOf("_setup") >= 0) {
+                            if (name.indexOf(".zip") >= 0) return assets[i]
+                            if (name.indexOf(".exe") >= 0) rawAsset = assets[i]
+                        }
+                    } else if (os === "osx") {
+                        if (name.indexOf("macos") >= 0 && name.indexOf(".zip") >= 0) return assets[i]
+                        if (name.indexOf(".dmg") >= 0) rawAsset = assets[i]
+                    } else {
+                        if (name.indexOf("linux") >= 0 && name.indexOf(".zip") >= 0) return assets[i]
+                        if (name.indexOf(".AppImage") >= 0) rawAsset = assets[i]
                     }
                 }
-                return zipAsset || exeAsset
+                return rawAsset
             }
 
             Button {
