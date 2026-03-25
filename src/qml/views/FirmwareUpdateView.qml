@@ -332,7 +332,7 @@ Item {
         title: "Select Firmware Binary"
         nameFilters: ["Binary files (*.bin)", "All files (*)"]
         onAccepted: {
-            var path = selectedFile.toString().replace("file:///", "")
+            var path = selectedFile.toString().replace(root.filePathFilter, "")
             view.selectedFilePath = path
             var parts = path.split(/[/\\]/)
             view.selectedFileName = parts[parts.length - 1]
@@ -382,10 +382,10 @@ Item {
         currentFile: {
             var parts = view.downloadedFilePath.split(/[/\\]/)
             var name = parts[parts.length - 1]
-            return "file:///" + name
+            return root.filePathFilter + name
         }
         onAccepted: {
-            var dest = selectedFile.toString().replace("file:///", "")
+            var dest = selectedFile.toString().replace(root.filePathFilter, "")
             githubChecker.saveFileTo(view.downloadedFilePath, dest)
         }
     }
