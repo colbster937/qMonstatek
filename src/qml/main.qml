@@ -13,6 +13,8 @@ ApplicationWindow {
     minimumHeight: 660
     visible: true
     title: "qMonstatek" + (m1device.connected ? " — " + m1device.portName : "")
+    
+    property string filePathFilter: Qt.platform.os === "windows" ? "file:///" : "file://"
 
     Material.theme: Material.Dark
     Material.accent: Material.Green

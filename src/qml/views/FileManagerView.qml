@@ -452,7 +452,7 @@ Item {
         fileMode: FileDialog.OpenFiles
         onAccepted: {
             if (selectedFiles.length === 1) {
-                var localPath = selectedFiles[0].toString().replace("file:///", "")
+                var localPath = selectedFiles[0].toString().replace(root.filePathFilter, "")
                 var fileName = localPath.split("/").pop().split("\\").pop()
                 m1device.uploadFile(localPath, buildRemotePath(fileName))
             } else if (selectedFiles.length > 1) {
@@ -541,7 +541,7 @@ Item {
         title: "Save File As"
         fileMode: FileDialog.SaveFile
         onAccepted: {
-            var localPath = selectedFile.toString().replace("file:///", "")
+            var localPath = selectedFile.toString().replace(root.filePathFilter, "")
             m1device.downloadFile(remotePath, localPath)
         }
     }

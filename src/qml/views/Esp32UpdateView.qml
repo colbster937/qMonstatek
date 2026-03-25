@@ -715,7 +715,7 @@ Item {
         title: "Select ESP32 Firmware Binary"
         nameFilters: ["Binary files (*.bin)", "All files (*)"]
         onAccepted: {
-            var path = selectedFile.toString().replace("file:///", "")
+            var path = selectedFile.toString().replace(root.filePathFilter, "")
             view.selectedFilePath = path
             var parts = path.split(/[/\\]/)
             view.selectedFileName = parts[parts.length - 1]
